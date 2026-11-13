@@ -91,4 +91,4 @@ Dorji Wangmo, Karma Dema, Pema Wangchuk, Rinchen Dema, Sangay Wangmo. Guided by 
 - Gradio documentation: https://www.gradio.app/docs
 - Python Tkinter documentation: https://docs.python.org/3/library/tkinter.html
 - Python JSON module: https://docs.python.org/3/library/json.html
-- GitHub Docs (repositories and README files): https://docs.github.com
+- GitHub Docs (repositories and README files): [https://docs.github.com](https://github.com/chay-1/ict-quiz-master)
