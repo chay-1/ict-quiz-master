@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+quiz_results.json
+teacher_questions.json
+.DS_Store
