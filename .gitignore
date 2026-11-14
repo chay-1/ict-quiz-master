@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+# results and teacher questions are created automatically on each computer
+data/*.json
