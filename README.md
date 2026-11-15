@@ -54,8 +54,7 @@ ict-quiz-master/
 2. Get the project from GitHub. Either clone it:
    ```
    git clone https://github.com/chay-1/ict-quiz-master.git
-   ```
-   Then open the `ict-quiz-master` folder in VS Code (**File → Open Folder**).
+   ``` Then open the `ict-quiz-master` folder in VS Code (**File → Open Folder**).
 3. In VS Code, open **Terminal → New Terminal** and create a virtual environment:
    ```
    python -m venv .venv
