@@ -4,6 +4,7 @@ from io import BytesIO
 import base64
 import html
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parent.parent   # the ICT_Quiz_Master folder
 IMAGE_DIR = ROOT / "images"
@@ -31,7 +32,12 @@ VISUAL_HEIGHT = 228   # iframe height (px) used by Streamlit: picture 219 px + s
 
 
 def sound_html(kind):
-    """Return hidden autoplay audio with an accessible manual-play fallback."""
+    """Return hidden autoplay audio (no buttons).
+
+    Every call makes a NEW id and comment. Gradio only redraws an HTML box when its
+    text changes; without this, the second correct (or wrong) answer had the same
+    text as the first one, so the browser never played the sound again.
+    """
     choices = {
         "correct": ("correct.mp3", "correct.wav"),
         "wrong": ("wrong.mp3", "wrong.wav"),
@@ -42,17 +48,11 @@ def sound_html(kind):
         if path.is_file() and path.stat().st_size:
             mime = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
             data = base64.b64encode(path.read_bytes()).decode("ascii")
-            return f"""
-            <div class="sound-fallback">
-              <audio id="quiz-feedback-audio" autoplay preload="auto">
-                <source src="data:{mime};base64,{data}" type="{mime}">
-              </audio>
-              <button onclick="const a=document.getElementById('quiz-feedback-audio');a.currentTime=0;a.play();"
-                style="border:0;border-radius:20px;padding:6px 12px;background:#eef2ff;color:#3730a3;cursor:pointer;font-weight:600">
-                🔊 Replay sound
-              </button>
-            </div>"""
-    return "<small>Sound file not found. Check the sounds folder.</small>"
+            uid = uuid.uuid4().hex
+            return (f'<!-- {uid} -->'
+                    f'<audio id="snd-{uid}" autoplay preload="auto" style="display:none">'
+                    f'<source src="data:{mime};base64,{data}" type="{mime}"></audio>')
+    return ""
 
 
 def _basic_pdf_certificate(result):
@@ -121,10 +121,10 @@ def _basic_pdf_certificate(result):
 
 
 def certificate_pdf(result):
-    """Create a portrait Certificate of Completion (Bhutanese key-pattern design) as PDF bytes."""
+    """Create a landscape Certificate of Completion (Bhutanese key-pattern design) as PDF bytes."""
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.enums import TA_CENTER
         from reportlab.lib.units import mm
@@ -141,10 +141,10 @@ def certificate_pdf(result):
     gold = colors.HexColor("#c8892a")     # thin gold lines
     ink = colors.HexColor("#2b2b2b")      # normal text
 
-    page_w, page_h = A4                    # portrait, like a framed school certificate
-    side, top, bottom = 30 * mm, 62 * mm, 40 * mm
+    page_w, page_h = landscape(A4)         # landscape page: 297 mm wide, 210 mm high
+    side, top, bottom = 30 * mm, 50 * mm, 24 * mm
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=side, leftMargin=side,
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=side, leftMargin=side,
                             topMargin=top, bottomMargin=bottom,
                             title="ICT Quiz Master Certificate", author="ICT Quiz Master")
 
@@ -153,11 +153,11 @@ def certificate_pdf(result):
         return ParagraphStyle(name, parent=styles["Normal"], alignment=TA_CENTER, **kw)
 
     student = html.escape(str(result.get("name", "Student")))
-    name_size = 28 if len(student) <= 20 else 22 if len(student) <= 30 else 17
+    name_size = 34 if len(student) <= 20 else 26 if len(student) <= 30 else 18
     year = str(result.get("date", ""))[:4] or "2026"
-    title = style("CertTitle", fontName="Helvetica-Bold", fontSize=25, leading=30, textColor=red)
+    title = style("CertTitle", fontName="Helvetica-Bold", fontSize=28, leading=33, textColor=red)
     sub = style("CertSub", fontName="Helvetica-Oblique", fontSize=12, leading=16, textColor=red)
-    body = style("CertBody", fontName="Times-Roman", fontSize=15, leading=22, textColor=ink)
+    body = style("CertBody", fontName="Times-Roman", fontSize=15, leading=20, textColor=ink)
     name_style = style("CertName", fontName="Times-BoldItalic", fontSize=name_size,
                        leading=name_size + 10, textColor=ink)
     topic_style = style("CertTopic", fontName="Helvetica-Bold", fontSize=17, leading=24, textColor=ink)
@@ -165,9 +165,9 @@ def certificate_pdf(result):
     stats = Table([[f"Correct answers: {result.get('correct', 0)}/{result.get('total', 10)}",
                     f"Final score: {result.get('finalScore', 0)}",
                     f"Best streak: {result.get('bestStreak', 0)}"]],
-                  colWidths=[50 * mm] * 3, rowHeights=[12 * mm])
+                  colWidths=[65 * mm] * 3, rowHeights=[11 * mm])
     stats.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 11),
         ("TEXTCOLOR", (0, 0), (-1, -1), red), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LINEABOVE", (0, 0), (-1, 0), 1, gold), ("LINEBELOW", (0, 0), (-1, 0), 1, gold)]))
@@ -175,7 +175,7 @@ def certificate_pdf(result):
     story = [
         Paragraph("Certificate of Completion", title),
         Paragraph(f"(ICT Quiz Master Award {html.escape(year)})", sub),
-        Spacer(1, 24 * mm),
+        Spacer(1, 8 * mm),
         Paragraph("Awarded to", body),
         Spacer(1, 3 * mm),
         Paragraph(student, name_style),
@@ -183,9 +183,9 @@ def certificate_pdf(result):
         Paragraph("in recognition of completing the interactive ICT quiz on", body),
         Spacer(1, 2 * mm),
         Paragraph(html.escape(str(result.get("topic", "ICT"))).upper(), topic_style),
-        Spacer(1, 18 * mm), stats, Spacer(1, 18 * mm),
+        Spacer(1, 7 * mm), stats, Spacer(1, 7 * mm),
         Paragraph("Keep learning, practising and exploring technology!", body),
-        Spacer(1, 10 * mm),
+        Spacer(1, 4 * mm),
         Paragraph(f"Date: {html.escape(str(result.get('date', '')))}", body),
     ]
     # KeepInFrame shrinks the content if a very long name or topic would overflow the page
@@ -206,7 +206,7 @@ def certificate_pdf(result):
         except Exception:
             canvas.restoreState()                     # ornament pictures missing: borders only
             return
-        size = 30 * mm
+        size = 26 * mm
         # one key-pattern corner, mirrored into all four corners (flip around the page centre)
         for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
             canvas.saveState()
@@ -215,7 +215,7 @@ def certificate_pdf(result):
             canvas.drawImage(key, -page_w / 2 + g + 1.5 * mm, page_h / 2 - g - 1.5 * mm - size,
                              size, size, mask="auto")
             canvas.restoreState()
-        d = 24 * mm                                   # round emblem at the top centre
+        d = 22 * mm                                   # round emblem at the top centre
         canvas.drawImage(circle, (page_w - d) / 2, page_h - g - d - 9 * mm, d, d, mask="auto")
         # optional school logos: drop logo_left.png / logo_right.png into the assets folder
         for file, x in (("logo_left.png", g + 36 * mm), ("logo_right.png", page_w - g - 36 * mm - d)):

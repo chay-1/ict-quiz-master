@@ -1,15 +1,78 @@
 """ICT Quiz Master — Gradio web application.
 Run: python gradio_app.py
 """
+import base64
+import json
+
 import pandas as pd
 import gradio as gr
 
 from core import quiz_core as core
 from core.quiz_custom import load_custom_questions, save_custom_questions
 from core.quiz_data import PASS_MARK, ranking, fmt_time
-from web.web_game_assets import question_visual, sound_html, certificate_file
+from web.web_game_assets import question_visual, certificate_file, SOUND_DIR
 
 TOPIC_NAMES = list(core.TOPIC_BY_NAME)
+
+
+# ── Sound effects ────────────────────────────────────────────────────────────
+# The sounds are loaded ONCE in the browser and played with JavaScript after each
+# click, with no audio player on the page. (Putting an <audio> tag into an HTML box worked only for question 1,
+# because Gradio does not redraw a box when its content stays the same.)
+def _load_sound_files():
+    uris = {}
+    for kind in ("correct", "wrong", "celebration"):
+        for ext, mime in ((".mp3", "audio/mpeg"), (".wav", "audio/wav")):
+            path = SOUND_DIR / f"{kind}{ext}"
+            if path.is_file() and path.stat().st_size:
+                uris[kind] = f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+                break
+    return uris
+
+
+LOAD_SOUNDS_JS = """() => {
+  const files = %s;
+  // Web Audio plays the sound without any audio player, so the browser shows no
+  // play/pause music icon.
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AudioCtx();
+  window.quizBuffers = {};
+  const toBuffer = (uri) => {
+    const text = atob(uri.split(',')[1]);
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) { bytes[i] = text.charCodeAt(i); }
+    return bytes.buffer;
+  };
+  for (const name in files) {
+    ctx.decodeAudioData(toBuffer(files[name]))
+      .then((buffer) => { window.quizBuffers[name] = buffer; })
+      .catch(() => {});
+  }
+  const unlock = () => { if (ctx.state === 'suspended') { ctx.resume(); } };
+  document.addEventListener('pointerdown', unlock);
+  document.addEventListener('keydown', unlock);
+  window.playQuizSound = (name) => {
+    const buffer = window.quizBuffers[name];
+    if (!buffer) { return; }
+    unlock();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  };
+}""" % json.dumps(_load_sound_files())
+
+# the feedback text contains a tick for a correct answer and a cross for a wrong one
+ANSWER_SOUND_JS = """(feedbackText, soundOn) => {
+  if (soundOn && feedbackText) {
+    window.playQuizSound(feedbackText.includes('\u2705') ? 'correct' : 'wrong');
+  }
+}"""
+
+# the result summary stays empty until the last question has been finished
+FINISH_SOUND_JS = """(summaryText, soundOn) => {
+  if (soundOn && summaryText && summaryText.trim()) { window.playQuizSound('celebration'); }
+}"""
 
 
 def _timer_text(state):
@@ -48,12 +111,10 @@ def check_answer(state, choice):
         feedback = "### ✅ Correct! Great job! **+10 points**"
         if msg:
             feedback += f"\n\n🔥 {msg}"
-        sound = sound_html("correct") if state.get("sound_on", True) else ""
     else:
         feedback = f"### ❌ Not quite. Correct answer: **{core.correct_text(q)}**"
-        sound = sound_html("wrong") if state.get("sound_on", True) else ""
     return (
-        state, feedback, sound,
+        state, feedback,
         gr.update(visible=False), gr.update(visible=True),
         state["points"] + state["bonus"], state["streak"], state["best"]
     )
@@ -85,10 +146,9 @@ def next_question(state):
             f"{'✅' if a['ok'] else '❌'} **Q{i}.** {a['q']}  \nYour answer: {a['chosen']} · Correct answer: {a['right']}"
             for i, a in enumerate(state["answers"], 1)
         )
-        celebration = sound_html("celebration") if state.get("sound_on", True) else ""
         return (
             state, gr.update(visible=False), gr.update(visible=True), summary, review,
-            pdf_path, _timer_text(state), celebration,
+            pdf_path, _timer_text(state),
             "Quiz completed", result["finalScore"], result["endStreak"],
             result["bestStreak"], "", "", "",
             gr.update(choices=[], value=None), "",
@@ -99,7 +159,7 @@ def next_question(state):
     q = state["questions"][i]
     return (
         state, gr.update(visible=True), gr.update(visible=False), "", "",
-        None, _timer_text(state), "",
+        None, _timer_text(state),
         f"Question {i + 1} of {len(state['questions'])}",
         state["points"] + state["bonus"], state["streak"], state["best"],
         f"### {core.TOPIC_BY_NAME[state['topic']]['icon']} Topic: **{state['topic']}**",
@@ -164,7 +224,19 @@ QUIZ_CSS = r"""
   font-weight: 750 !important; color: #172554 !important; margin: 0 !important; }
 .answer-options label, .answer-options span, .answer-options p {
   font-size: 19px !important; line-height: 1.55 !important; }
-.answer-options { gap: 10px !important; }
+/* Answer options: the same 2 x 2 grid and the same box size for every question.
+   Gradio puts the class on the <fieldset> itself, so both selectors are listed. */
+.answer-options > div:has(> label),
+.answer-options fieldset > div:has(> label) {
+  display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-auto-rows: 1fr !important; gap: 12px !important; width: 100% !important;
+}
+.answer-options label {
+  display: flex !important; align-items: center !important; justify-content: flex-start !important;
+  text-align: left !important; gap: 12px !important; width: 100% !important; min-width: 0 !important;
+  min-height: 64px !important; margin: 0 !important; padding: 12px 18px !important; box-sizing: border-box !important;
+}
+.answer-options label span, .answer-options label p { text-align: left !important; margin: 0 !important; }
 .timer-top { font-size: 20px !important; font-weight: 750 !important; color: #172554 !important;
   background: #eff6ff !important; border: 1px solid #bfdbfe !important;
   border-radius: 12px !important; padding: 10px 16px !important; width: fit-content !important; }
@@ -172,11 +244,13 @@ QUIZ_CSS = r"""
   .quiz-visual { max-width: 100% !important; }
   .question-text h1, .question-text h2, .question-text h3, .question-text p { font-size: 23px !important; }
   .answer-options label, .answer-options span, .answer-options p { font-size: 17px !important; }
+  .answer-options > div:has(> label), .answer-options fieldset > div:has(> label) { grid-template-columns: 1fr !important; }
 }
 """
 
 with gr.Blocks(title="ICT Quiz Master", css=QUIZ_CSS) as demo:
     gr.Markdown("# 🎓 ICT Quiz Master\nLearn ICT through an interactive quiz game.")
+    demo.load(None, inputs=None, outputs=None, js=LOAD_SOUNDS_JS)
     with gr.Tabs():
         with gr.Tab("🎮 Take a quiz"):
             quiz_state = gr.State(None)
@@ -204,12 +278,10 @@ with gr.Blocks(title="ICT Quiz Master", css=QUIZ_CSS) as demo:
                     check_button = gr.Button("Check answer ✓", variant="primary", visible=True)
                     next_button = gr.Button("Next question ➜", variant="primary", visible=False)
                 feedback = gr.Markdown()
-                sound_output = gr.HTML()
             with gr.Column(visible=False) as result_group:
                 result_summary = gr.Markdown()
                 review_output = gr.Markdown()
                 certificate_output = gr.File(label="🎓 Download your PDF certificate")
-                celebration_output = gr.HTML()
                 restart_button = gr.Button("🔄 Try another quiz", variant="primary")
             timer.tick(timer_tick, inputs=quiz_state, outputs=timer_label)
 
@@ -224,17 +296,17 @@ with gr.Blocks(title="ICT Quiz Master", css=QUIZ_CSS) as demo:
             check_button.click(
                 check_answer,
                 inputs=[quiz_state, answer_choice],
-                outputs=[quiz_state, feedback, sound_output, check_button, next_button,
+                outputs=[quiz_state, feedback, check_button, next_button,
                          score_label, streak_label, best_label]
-            )
+            ).success(None, inputs=[feedback, sound_toggle], outputs=None, js=ANSWER_SOUND_JS)
             next_button.click(
                 next_question,
                 inputs=quiz_state,
                 outputs=[quiz_state, game_group, result_group, result_summary, review_output,
-                         certificate_output, timer_label, celebration_output, progress_label,
+                         certificate_output, timer_label, progress_label,
                          score_label, streak_label, best_label, topic_label, picture,
                          question_label, answer_choice, feedback, check_button, next_button]
-            )
+            ).success(None, inputs=[result_summary, sound_toggle], outputs=None, js=FINISH_SOUND_JS)
             restart_button.click(
                 restart_quiz,
                 outputs=[quiz_state, setup_group, game_group, result_group, timer_label,
