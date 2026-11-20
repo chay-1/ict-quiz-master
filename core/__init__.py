@@ -1,1 +1,1 @@
-"""Logic shared by the Streamlit, Gradio and Tkinter versions (no user-interface code)."""
+"""Quiz rules and data used by the Tkinter screens (no window code here)."""

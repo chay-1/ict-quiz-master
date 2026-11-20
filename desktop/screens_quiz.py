@@ -8,14 +8,17 @@ from core.quiz_data import (
 )
 from core.quiz_questions import prepare
 from core.quiz_theme import (
-    AMBER, BG, BLUE, DARKRED, FONT, GREEN, GREY, LIGHT, MUTED, NAVY,
-    ORANGE, RED, TIME_LIMIT, WHITE,
+    AMBER, BG, BLUSH, DARK_GREEN, DARK_RED, FONT, GREEN, GREY, INK, MINT, MINT_EDGE,
+    MUTED, ORANGE, ORANGE_LIGHT, PINK, RED, RED_LIGHT, TIME_LIMIT, WHITE,
 )
+from core.quiz_theme import (BORDER, SURFACE, SURFACE_2, INK_ON_LIME, LIME, LIME_DARK, TEAL,
+                             TEAL_SOFT, TEAL_EDGE, RED_SOFT, RED_EDGE, PURPLE, PURPLE_SOFT)
 from desktop.widgets import FlatButton, bind_all, card, label, top_bar
 
 
-OPT_STYLE = {"default": (WHITE, GREY), "selected": (LIGHT, BLUE),
-             "correct": ("#ecfdf5", GREEN), "incorrect": ("#fef2f2", RED)}
+OPT_STYLE = {"default": (SURFACE, BORDER), "hover": (SURFACE_2, PURPLE),
+             "selected": (PURPLE_SOFT, LIME),
+             "correct": (TEAL_SOFT, TEAL), "incorrect": (RED_SOFT, RED)}
 
 
 class QuizScreen(tk.Frame):
@@ -31,6 +34,7 @@ class QuizScreen(tk.Frame):
         self.milestone, self.earned = None, 0
         self.qs = prepare(topic["id"])
         self.hidden, self.lifeline_used = {}, False     # 50/50 lifeline
+        self.opt_text = {}                              # text shown on each answer row
         self.qleft, self.left = TIME_LIMIT, {}          # countdown per question
         app.bind("<Key>", self.on_key)                  # keyboard shortcuts
         self._build()
@@ -40,72 +44,107 @@ class QuizScreen(tk.Frame):
     # ----- layout -----
     def _build(self):
         bar = top_bar(self)
-        self.timer_lbl = label(bar, "00:00", 12, True, BLUE, LIGHT, padx=12, pady=4)
+        self.timer_lbl = label(bar, "00:00", 12, True, LIME, SURFACE_2, padx=12, pady=4)
         self.timer_lbl.pack(side="right", padx=(8, 24))
-        self.qtimer_lbl = label(bar, "", 12, True, GREEN, WHITE, padx=10, pady=4)
+        self.qtimer_lbl = label(bar, "", 12, True, TEAL, TEAL_SOFT, padx=10, pady=4)
         self.qtimer_lbl.pack(side="right", padx=4)
         self.qnum_lbl = label(bar, "", 11, True)
         self.qnum_lbl.pack(side="right", padx=8)
         self.streak_lbl = label(bar, "", 11, True, padx=10, pady=4)
         self.streak_lbl.pack(side="right", padx=8)
-        self.pts_lbl = label(bar, "", 11, True, BLUE, LIGHT, padx=10, pady=4)
+        self.pts_lbl = label(bar, "", 11, True, LIME, SURFACE_2, padx=10, pady=4)
         self.pts_lbl.pack(side="right", padx=8)
 
         trough = tk.Frame(self, bg=GREY, height=8)
         trough.pack(fill="x")
-        self.fill = tk.Frame(trough, bg=BLUE)
+        self.fill = tk.Frame(trough, bg=LIME)
         self.fill.place(relx=0, rely=0, relheight=1, relwidth=0)
 
-        nav = tk.Frame(self, bg=WHITE)
+        nav = tk.Frame(self, bg=SURFACE)
         nav.pack(fill="x")
-        label(nav, "Questions:", 9, fg=MUTED, bg=WHITE).pack(side="left", padx=(24, 6), pady=8)
+        label(nav, "Questions:", 9, fg=MUTED, bg=SURFACE).pack(side="left", padx=(24, 6), pady=8)
         self.nav_btns = []
         for i in range(len(self.qs)):
-            b = tk.Label(nav, text=str(i + 1), width=3, font=(FONT, 10, "bold"), cursor="hand2")
+            b = tk.Label(nav, text=str(i + 1), width=3, font=(FONT, 10, "bold"), cursor="hand2", takefocus=True)
             b.pack(side="left", padx=2)
             b.bind("<Button-1>", lambda e, i=i: self.goto(i))
+            b.bind("<Return>", lambda e, i=i: self.goto(i))
+            b.bind("<Enter>", lambda e, b=b: b.config(relief="solid", bd=1))
+            b.bind("<Leave>", lambda e, b=b: b.config(relief="flat", bd=0))
             self.nav_btns.append(b)
-        self.answered_lbl = label(nav, "", 9, fg=MUTED, bg=WHITE)
+        self.answered_lbl = label(nav, "", 9, fg=MUTED, bg=SURFACE)
         self.answered_lbl.pack(side="right", padx=24)
-        self.best_lbl = label(nav, "", 9, True, ORANGE, WHITE)
+        self.best_lbl = label(nav, "", 9, True, ORANGE, SURFACE)
         self.best_lbl.pack(side="right", padx=8)
+
+        # The dock is pinned to the BOTTOM of the window, so CHECK ANSWER, TRY AGAIN and
+        # SKIP & CONTINUE are always visible, even on a small screen.
+        self.dock = tk.Frame(self, bg=BG)
+        self.dock.pack(side="bottom", fill="x", padx=80, pady=(0, 10))
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True)
         body.grid_rowconfigure(0, weight=1)
         body.grid_columnconfigure(0, weight=1)
         inner = tk.Frame(body, bg=BG, width=760)
-        inner.grid(row=0, column=0)
+        inner.grid(row=0, column=0, sticky="n", pady=(6, 0))
 
         self.banner_slot = tk.Frame(inner, bg=BG)
         self.banner_slot.pack(fill="x")
-        qcard = card(inner, padx=20, pady=9)
-        qcard.pack(fill="x", pady=(4, 6))
+        qcard = card(inner, padx=20, pady=6)
+        qcard.pack(fill="x", pady=(2, 4))
         self.pic = tk.Canvas(qcard, width=PIC_W, height=PIC_H, bg=WHITE, highlightthickness=0)
         self.q_lbl = label(qcard, "", 15, True, wraplength=470, justify="left")
         self.q_lbl.pack(side="left", anchor="w")
 
         self.opt_rows = {}
         for lab in "ABCD":
-            row = tk.Frame(inner, bg=WHITE, highlightthickness=2, highlightbackground=GREY,
-                           padx=14, pady=7, cursor="hand2")
-            row.pack(fill="x", pady=4)
-            tk.Label(row, text=lab, width=3, bg=BLUE, fg=WHITE, font=(FONT, 11, "bold")).pack(side="left")
-            txt = tk.Label(row, text="", bg=WHITE, fg=NAVY, font=(FONT, 12), anchor="w")
+            row = tk.Frame(inner, bg=SURFACE, highlightthickness=2, highlightbackground=GREY,
+                           padx=14, pady=4, cursor="hand2")
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=lab, width=3, bg=PURPLE, fg=WHITE, font=(FONT, 11, "bold")).pack(side="left")
+            txt = tk.Label(row, text="", bg=SURFACE, fg=INK, font=(FONT, 12), anchor="w")
             txt.pack(side="left", padx=12, fill="x", expand=True)
             bind_all(row, "<Button-1>", lambda e, l=lab: self.choose(l))
+            bind_all(row, "<Enter>", lambda e, l=lab: self._paint_opt(l, True))
+            bind_all(row, "<Leave>", lambda e, l=lab: self._paint_opt(l, False))
             self.opt_rows[lab] = (row, txt)
 
-        self.action_slot = tk.Frame(inner, bg=BG)
-        self.action_slot.pack(fill="x", pady=5)
+        self.action_slot = tk.Frame(self.dock, bg=BG)
+        self.action_slot.pack(fill="x", pady=4)
         self.check_btn = FlatButton(self.action_slot, "CHECK ANSWER", self.check)
         self.check_btn.pack(side="left", fill="x", expand=True)
-        self.fifty_btn = FlatButton(self.action_slot, "🎯 50/50", self.fifty, "blue")
+        self.fifty_btn = FlatButton(self.action_slot, "🎯 50/50", self.fifty, "pink")
         self.fifty_btn.pack(side="left", padx=(8, 0))
-        self.fb_slot = tk.Frame(inner, bg=BG)
+        self.fb_slot = tk.Frame(self.dock, bg=BG)
         self.fb_slot.pack(fill="x")
 
     # ----- helpers -----
+    def _opt_state(self, lab, q):
+        if self.checked and lab == q["answer"]:
+            return "correct"
+        if self.checked and lab == self.selected:
+            return "incorrect"
+        if lab == self.selected:
+            return "selected"
+        return "default"
+
+    def _paint_opt(self, lab, hover):
+        # We colour one answer row. It reacts to the mouse only while the student can still choose.
+        q = self.qs[self.cur]
+        row, txt = self.opt_rows[lab]
+        if lab in self.hidden.get(self.cur, ()):
+            row.config(bg=SURFACE_2, highlightbackground=BORDER, cursor="arrow")
+            txt.config(text="—  removed by 50/50", bg=SURFACE_2, fg=MUTED)
+            return
+        state = self._opt_state(lab, q)
+        can_pick = not self.checked and not self.review
+        if hover and can_pick and state == "default":
+            state = "hover"
+        bg, border = OPT_STYLE[state]
+        row.config(bg=bg, highlightbackground=border, cursor="hand2" if can_pick else "arrow")
+        txt.config(text=self.opt_text.get(lab, ""), bg=bg, fg=INK)
+
     def locked(self, i):
         return self.records.get(i, {}).get("locked", False)
 
@@ -117,11 +156,11 @@ class QuizScreen(tk.Frame):
 
     def _paint_qtimer(self):
         if self.checked or self.review:
-            self.qtimer_lbl.config(text="", bg=WHITE)
+            self.qtimer_lbl.config(text="", bg=SURFACE)
             return
         low = self.qleft <= 5
-        self.qtimer_lbl.config(text=f"⏳ {max(self.qleft, 0)}s", fg=RED if low else GREEN,
-                               bg="#fef2f2" if low else "#ecfdf5")
+        self.qtimer_lbl.config(text=f"⏳ {max(self.qleft, 0)}s", fg=RED if low else TEAL,
+                               bg=RED_SOFT if low else TEAL_SOFT)
 
     def _tick(self):
         # We update the total time and question countdown every second.
@@ -129,6 +168,8 @@ class QuizScreen(tk.Frame):
         self.timer_lbl.config(text=fmt_time(self.secs))
         if not self.checked and not self.review:
             self.qleft -= 1
+            if 0 < self.qleft <= 5:
+                beep("tick", self.app)                 # soft tick in the last 5 seconds
             self._paint_qtimer()
             if self.qleft <= 0:
                 self.timeout()
@@ -144,7 +185,7 @@ class QuizScreen(tk.Frame):
 
     # ----- actions -----
     def on_key(self, e):
-        # We let the student use A-D to answer, Enter to continue, and F for 50/50.
+        # Keys: A-D answer, Enter check/continue, F 50/50, R try again, S skip & continue.
         k = e.keysym.lower()
         if k in ("a", "b", "c", "d"):
             self.choose(k.upper())
@@ -154,6 +195,10 @@ class QuizScreen(tk.Frame):
             self.cont() if self.checked else self.check()
         elif k == "f":
             self.fifty()
+        elif k == "r" and self.checked and not self.review and self.selected != self.qs[self.cur]["answer"]:
+            self.retry()                                   # R = try again (only after a wrong answer)
+        elif k == "s" and self.checked and not self.review:
+            self.cont()                                    # S = skip / continue
 
     def fifty(self):
         # We hide two wrong choices. The student can use this lifeline once per quiz.
@@ -177,6 +222,7 @@ class QuizScreen(tk.Frame):
             return
         if not self.checked and not self.review:
             self.selected = lab
+            beep("click", self.app)
             self.render()
 
     def check(self):
@@ -255,7 +301,7 @@ class QuizScreen(tk.Frame):
         self.pts_lbl.config(text=f"⭐ {self.points + self.bonus} pts")
         self.streak_lbl.config(text=f"🔥 {self.streak}",
                                fg=ORANGE if self.streak else MUTED,
-                               bg="#fff7ed" if self.streak else "#f1f5f9")
+                               bg=ORANGE_LIGHT if self.streak else SURFACE_2)
         self.qnum_lbl.config(text=f"Q{self.cur + 1}/{len(self.qs)}")
         self.fill.place_configure(relwidth=locked_n / len(self.qs))
         self.answered_lbl.config(text=f"{locked_n}/{len(self.qs)} answered")
@@ -264,23 +310,23 @@ class QuizScreen(tk.Frame):
         for i, b in enumerate(self.nav_btns):
             rec = self.records.get(i)
             if rec and rec["locked"]:
-                bg, fg = (GREEN, WHITE) if rec["correct"] else (RED, WHITE)
+                bg, fg = (TEAL, INK_ON_LIME) if rec["correct"] else (RED, INK_ON_LIME)
             elif rec:
-                bg, fg = AMBER, WHITE
+                bg, fg = AMBER, INK_ON_LIME
             else:
-                bg, fg = GREY, NAVY
-            b.config(bg=bg, fg=fg, highlightthickness=2 if i == self.cur else 0, highlightbackground=NAVY)
+                bg, fg = SURFACE_2, INK
+            b.config(bg=bg, fg=fg, highlightthickness=2 if i == self.cur else 0, highlightbackground=LIME)
 
         for w in self.banner_slot.winfo_children():
             w.destroy()
         if self.review:
-            ban = tk.Frame(self.banner_slot, bg="#fffbeb", highlightthickness=1,
-                           highlightbackground="#fde68a", padx=14, pady=8)
+            ban = tk.Frame(self.banner_slot, bg=TEAL_SOFT, highlightthickness=1,
+                           highlightbackground=TEAL_EDGE, padx=14, pady=8)
             ban.pack(fill="x", pady=(0, 6))
-            label(ban, f"👁 Reviewing Question {self.cur + 1} (already answered)", 10, True, "#92400e").pack(side="left")
+            label(ban, f"👁 Reviewing Question {self.cur + 1} (already answered)", 10, True, DARK_GREEN).pack(side="left")
             nxt = self.next_index()
             if nxt is not None:
-                lb = label(ban, "Back to Quiz →", 10, True, "#92400e", "#fef3c7", padx=8, pady=3, cursor="hand2")
+                lb = label(ban, "Back to Quiz →", 10, True, INK_ON_LIME, LIME, padx=8, pady=3, cursor="hand2")
                 lb.pack(side="right")
                 lb.bind("<Button-1>", lambda e: self.goto(nxt))
 
@@ -293,27 +339,13 @@ class QuizScreen(tk.Frame):
             self.pic.pack_forget()
             self.q_lbl.config(wraplength=640)
         for lab, text in q["options"]:
-            row, txt = self.opt_rows[lab]
-            if lab in self.hidden.get(self.cur, ()):
-                row.config(bg=GREY, highlightbackground=GREY)
-                txt.config(text="—  removed by 50/50", bg=GREY, fg=MUTED)
-                continue
-            if self.checked and lab == q["answer"]:
-                state = "correct"
-            elif self.checked and lab == self.selected:
-                state = "incorrect"
-            elif lab == self.selected:
-                state = "selected"
-            else:
-                state = "default"
-            bg, border = OPT_STYLE[state]
-            row.config(bg=bg, highlightbackground=border)
-            txt.config(text=text, bg=bg, fg=NAVY)
+            self.opt_text[lab] = text
+            self._paint_opt(lab, False)
 
-        if self.review:
+        if self.review or self.checked:          # the result panel takes the place of the CHECK row
             self.action_slot.pack_forget()
         else:
-            self.action_slot.pack(fill="x", pady=5, before=self.fb_slot)
+            self.action_slot.pack(fill="x", pady=4, before=self.fb_slot)
             is_last_q = self.cur == len(self.qs) - 1
             self.check_btn.config(text="FINISH QUIZ" if is_last_q else "CHECK ANSWER")
             self.check_btn.set_enabled(bool(self.selected) and not self.checked)
@@ -323,60 +355,90 @@ class QuizScreen(tk.Frame):
         self._feedback(q)
 
     def _feedback(self, q):
+        # Result panel. Right = teal, wrong = red. Main action = lime, second action = outline.
         for w in self.fb_slot.winfo_children():
             w.destroy()
         if not self.checked or self.review:
             return
         ok = self.selected == q["answer"]
-        bg, edge = ("#ecfdf5", GREEN) if ok else ("#fef2f2", RED)
-        box = tk.Frame(self.fb_slot, bg=bg, highlightthickness=2, highlightbackground=edge, padx=18, pady=9)
+        bg, edge = (TEAL_SOFT, TEAL) if ok else (RED_SOFT, RED)
+
+        box = tk.Frame(self.fb_slot, bg=bg, highlightthickness=1, highlightbackground=edge)
         box.pack(fill="x")
+        bar = tk.Frame(box, bg=BG, width=6)             # coloured side bar (fades in)
+        bar.pack(side="left", fill="y")
+        body = tk.Frame(box, bg=bg, padx=16, pady=8)
+        body.pack(side="left", fill="x", expand=True)
+
         if ok:
-            label(box, "✓  Correct!   +10 points", 14, True, "#047857").pack(anchor="w")
+            label(body, "✓  Correct!   +10 points", 14, True, TEAL).pack(anchor="w")
             if self.milestone:
                 n, text, bonus = self.milestone
                 msg = f"🔥 {n} ANSWERS IN A ROW — {text}"
                 if bonus:
                     msg += f"   +{bonus} STREAK BONUS"
-                label(box, msg, 11, True, ORANGE).pack(anchor="w", pady=2)
+                label(body, msg, 11, True, ORANGE).pack(anchor="w")
         else:
-            label(box, "⏰  Time's up!   0 points" if self.selected is None else "✕  Not Quite   0 points",
-                  14, True, "#b91c1c").pack(anchor="w")
-            label(box, f"💔 STREAK BROKEN — current streak: 0 · best streak: {self.best}",
-                  11, True, ORANGE).pack(anchor="w", pady=2)
-            label(box, f"The correct answer is {q['answer']}.", 11, True, "#b91c1c").pack(anchor="w")
-        label(box, q["why"], 10, fg=MUTED, wraplength=660, justify="left").pack(anchor="w", pady=4)
-        row = tk.Frame(box, bg=bg)
-        row.pack(anchor="w", pady=(4, 0))
+            title = "⏰  Time's up!   0 points" if self.selected is None else "✕  Not quite   0 points"
+            label(body, title, 14, True, RED).pack(anchor="w")
+            label(body, f"The correct answer is {q['answer']}.   💔 Streak broken · best streak: {self.best}",
+                  11, True, INK).pack(anchor="w")
+        label(body, q["why"], 10, fg=MUTED, wraplength=700, justify="left").pack(anchor="w", pady=(2, 6))
+
+        row = tk.Frame(body, bg=bg)
+        row.pack(fill="x")
         finishing = self.next_index() is None
         if not ok:
-            FlatButton(row, "TRY AGAIN", self.retry, "secondary").pack(side="left", padx=(0, 8))
+            again = FlatButton(row, "↻  TRY AGAIN", self.retry, "secondary", 11)
+            again.config(padx=18, pady=7)
+            again.pack(side="left", padx=(0, 10))
         if ok:
-            text = "FINISH QUIZ" if finishing else "CONTINUE →"
+            text = "FINISH QUIZ  ✓" if finishing else "CONTINUE  →"
         else:
-            text = "SKIP & FINISH" if finishing else "SKIP & CONTINUE"
-        FlatButton(row, text, self.cont, "success" if ok else "primary").pack(side="left")
+            text = "SKIP & FINISH  ✓" if finishing else "SKIP & CONTINUE  →"
+        main = FlatButton(row, text, self.cont, "primary", 11)
+        main.config(padx=18, pady=7)
+        main.pack(side="left")
+
+        hint = ("" if ok else "R = try again   ·   ") + "S / Enter = " + ("finish" if finishing else "continue")
+        label(row, hint, 9, fg=MUTED, bg=bg).pack(side="right")
+        self._fade_in(bar, edge)
+
+    def _fade_in(self, widget, color, step=0):
+        # A short fade-in of the side bar, so the new panel feels smooth, not sudden.
+        steps = 6
+        mix = lambda a, b, t: "#%02x%02x%02x" % tuple(
+            int(int(a[i:i + 2], 16) + (int(b[i:i + 2], 16) - int(a[i:i + 2], 16)) * t) for i in (1, 3, 5))
+        try:
+            widget.config(bg=mix(BG, color, step / steps))
+            if step < steps:
+                self.after(35, lambda: self._fade_in(widget, color, step + 1))
+        except tk.TclError:                              # panel was replaced already
+            pass
 
 
 # ───────────────────────── Screen 9: Result ─────────────────────────
 class ResultScreen(tk.Frame):
     """We show the final score, pass status, and next steps."""
-    def __init__(self, app, topic, r, entry):
+    def __init__(self, app, topic, r, entry, celebrate=True):
         super().__init__(app, bg=BG)
         self.app = app
         pass_ = r["correct"] >= PASS_MARK
         pct = r["correct"] * 10
-        if pass_:
-            Confetti(self)
-            beep("streak", app)
+        if celebrate:                      # confetti and sound only the first time, not when coming back
+            if pass_:
+                Confetti(self)
+                beep("streak", app)
+            else:
+                beep("fail", app)
         wrap = tk.Frame(self, bg=BG)
         wrap.place(relx=0.5, rely=0.5, anchor="center")
 
-        ban = tk.Frame(wrap, bg=NAVY if pass_ else DARKRED, padx=60, pady=16)
+        ban = tk.Frame(wrap, bg=TEAL if pass_ else RED, padx=60, pady=16)
         ban.pack(fill="x")
-        label(ban, "QUIZ COMPLETE!", 11, True, "#93c5fd").pack()
-        label(ban, f"🏆 {entry['finalScore']}", 40, True, WHITE).pack()
-        label(ban, "PASSED ✓" if pass_ else "TRY AGAIN ✗", 13, True, "#bfdbfe").pack()
+        label(ban, "QUIZ COMPLETE!", 11, True, INK_ON_LIME).pack()
+        label(ban, f"🏆 {entry['finalScore']}", 40, True, INK_ON_LIME).pack()
+        label(ban, "PASSED ✓" if pass_ else "TRY AGAIN ✗", 13, True, INK_ON_LIME).pack()
 
         label(wrap, f"{topic['icon']} {topic['name']}  ·  {app.student}  ·  {pct}%", 12, True).pack(pady=8)
 
@@ -384,12 +446,12 @@ class ResultScreen(tk.Frame):
         grid.pack()
         items = [("✓ CORRECT", f"{r['correct']}/10", GREEN),
                  ("✗ INCORRECT", str(10 - r["correct"]), RED),
-                 ("🎯 PASS MARK", f"{PASS_MARK}/10", BLUE),
+                 ("🎯 PASS MARK", f"{PASS_MARK}/10", LIME),
                  ("🔥 BEST STREAK", str(r["best"]), ORANGE),
-                 ("⚡ STREAK BONUS", f"+{r['bonus']}", BLUE),
+                 ("⚡ STREAK BONUS", f"+{r['bonus']}", LIME),
                  ("📉 PENALTY", f"−{entry['penalty']}" if entry["penalty"] else "0", RED if entry["penalty"] else MUTED),
-                 ("⏱ TIME TAKEN", fmt_time(r["secs"]), NAVY),
-                 ("🏆 FINAL SCORE", str(entry["finalScore"]), NAVY)]
+                 ("⏱ TIME TAKEN", fmt_time(r["secs"]), INK),
+                 ("🏆 FINAL SCORE", str(entry["finalScore"]), INK)]
         for i, (t, v, col) in enumerate(items):
             c = card(grid, padx=18, pady=10, width=170)
             c.grid(row=i // 4, column=i % 4, padx=5, pady=5)
@@ -400,13 +462,21 @@ class ResultScreen(tk.Frame):
                     f"= {entry['finalScore']}", 10, fg=MUTED).pack(pady=4)
         label(wrap, self._motivation(r, entry), 11, True, ORANGE).pack(pady=2)
 
+        # Every student receives a certificate as a token of appreciation.
+        cert = tk.Frame(wrap, bg=PURPLE_SOFT, highlightthickness=1, highlightbackground=PURPLE, padx=16, pady=8)
+        cert.pack(pady=(8, 4))
+        label(cert, "🎓  Your certificate is ready. Thank you for taking part!", 11, True, INK, PURPLE_SOFT).pack(side="left", padx=(0, 14))
+        FlatButton(cert, "VIEW & DOWNLOAD", lambda: app.show_certificate(topic, r, entry), "primary", 10).pack(side="left")
+
         row = tk.Frame(wrap, bg=BG)
-        row.pack(pady=10)
-        FlatButton(row, "VIEW PERFORMANCE", lambda: app.show_performance(topic, r, entry)).pack(side="left", padx=5)
+        row.pack(pady=(6, 2))
+        FlatButton(row, "VIEW PERFORMANCE", lambda: app.show_performance(topic, r, entry), "secondary").pack(side="left", padx=5)
         FlatButton(row, "REVIEW ANSWERS", lambda: app.show_review(topic, r, entry), "secondary").pack(side="left", padx=5)
         FlatButton(row, "🏆 LEADERBOARD", app.show_leaderboard, "secondary").pack(side="left", padx=5)
-        FlatButton(row, "TRY AGAIN", app.show_topics, "secondary").pack(side="left", padx=5)
-        FlatButton(row, "HOME", app.show_welcome, "secondary").pack(side="left", padx=5)
+        row2 = tk.Frame(wrap, bg=BG)
+        row2.pack(pady=(2, 8))
+        FlatButton(row2, "TRY AGAIN", app.show_topics, "pink").pack(side="left", padx=5)
+        FlatButton(row2, "HOME", app.show_welcome, "secondary").pack(side="left", padx=5)
 
     @staticmethod
     def _motivation(r, entry):
@@ -422,7 +492,7 @@ class ResultScreen(tk.Frame):
 
 class Confetti(tk.Canvas):
     """Falling confetti drawn behind the result card when the student passes."""
-    COLORS = [BLUE, GREEN, AMBER, RED, "#a855f7", "#06b6d4"]
+    COLORS = [LIME, TEAL, PURPLE, AMBER, "#a07bff", "#e6ff7a", "#3fe0bd"]
 
     def __init__(self, parent):
         super().__init__(parent, bg=BG, highlightthickness=0)
@@ -505,15 +575,15 @@ class PerformanceScreen(tk.Frame):
         wrap = tk.Frame(self, bg=BG)
         wrap.place(relx=0.5, rely=0.5, anchor="center")
         label(wrap, "Your Performance", 24, True).pack()
-        label(wrap, f"{topic['icon']} {topic['name']}", 13, True, BLUE).pack(pady=4)
+        label(wrap, f"{topic['icon']} {topic['name']}", 13, True, LIME).pack(pady=4)
 
         cv = tk.Canvas(wrap, width=170, height=170, bg=BG, highlightthickness=0)
         cv.pack(pady=6)
         cv.create_oval(15, 15, 155, 155, outline=GREY, width=14)
         if pct:
             cv.create_arc(15, 15, 155, 155, start=90, extent=-3.6 * pct, style="arc",
-                          outline=GREEN if pct >= 60 else RED, width=14)
-        cv.create_text(85, 85, text=f"{pct}%", font=(FONT, 26, "bold"), fill=NAVY)
+                          outline=TEAL if pct >= 60 else RED, width=14)
+        cv.create_text(85, 85, text=f"{pct}%", font=(FONT, 26, "bold"), fill=INK)
         label(wrap, "Good Job!" if pct >= 60 else "Keep Practising", 14, True).pack()
 
         box = card(wrap, padx=30, pady=12)
@@ -523,7 +593,7 @@ class PerformanceScreen(tk.Frame):
                 ("Final Points", entry["finalScore"]), ("Time Taken", fmt_time(r["secs"])),
                 ("Status", "PASS" if r["correct"] >= PASS_MARK else "TRY AGAIN")]
         for k, v in rows:
-            line = tk.Frame(box, bg=WHITE)
+            line = tk.Frame(box, bg=SURFACE)
             line.pack(fill="x", pady=2)
             label(line, k, 11, fg=MUTED).pack(side="left")
             label(line, str(v), 11, True).pack(side="right")
@@ -533,6 +603,3 @@ class PerformanceScreen(tk.Frame):
         FlatButton(row, "TRY ANOTHER QUIZ", self.master.show_topics).pack(side="left", padx=6)
         FlatButton(row, "EXIT", self.master.show_welcome, "secondary").pack(side="left", padx=6)
 
-
-# ───────────────────────── Leaderboard (interactive) ─────────────────────────
-# We make button groups for choosing leaderboard filters.

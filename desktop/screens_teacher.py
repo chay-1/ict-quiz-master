@@ -3,7 +3,9 @@ import tkinter as tk
 
 from core.quiz_custom import load_custom_questions, save_custom_questions
 from core.quiz_data import fmt_time
-from core.quiz_theme import BG, FONT, GREEN, LEVEL_COLOR, MUTED, NAVY, ORANGE, RED, WHITE
+from core.quiz_theme import BG, DARK_GREEN, FONT, GREEN, INK, LEVEL_COLOR, MUTED, ORANGE, RED, WHITE
+from core.quiz_theme import (BORDER, SURFACE, SURFACE_2, INK_ON_LIME, LIME, LIME_DARK, TEAL,
+                             TEAL_SOFT, TEAL_EDGE, RED_SOFT, RED_EDGE, PURPLE, PURPLE_SOFT)
 from desktop.widgets import FlatButton, card, chip_group, label, top_bar
 
 
@@ -22,12 +24,14 @@ class TeacherSetupScreen(tk.Frame):
         r = tk.Frame(wrap, bg=BG)
         r.pack(pady=6)
         label(r, "Student name:", 11, True).pack(side="left", padx=6)
-        self.name = tk.Entry(r, font=(FONT, 12), width=24, relief="solid", bd=1)
+        self.name = tk.Entry(r, font=(FONT, 12), width=24, relief="flat", bd=0, bg=SURFACE_2, fg=INK, insertbackground=LIME,
+                   highlightthickness=2, highlightbackground=BORDER, highlightcolor=LIME)
         self.name.pack(side="left")
 
         for text, attr in [("Question", "q"), ("Model answer", "a")]:
             label(wrap, text, 11, True).pack(anchor="w", pady=(8, 0))
-            e = tk.Entry(wrap, font=(FONT, 12), width=70, relief="solid", bd=1)
+            e = tk.Entry(wrap, font=(FONT, 12), width=70, relief="flat", bd=0, bg=SURFACE_2, fg=INK, insertbackground=LIME,
+                   highlightthickness=2, highlightbackground=BORDER, highlightcolor=LIME)
             e.pack()
             setattr(self, attr, e)
 
@@ -37,12 +41,14 @@ class TeacherSetupScreen(tk.Frame):
         label(lv, "Difficulty:", 11, True).pack(side="left", padx=(0, 6))
         chip_group(lv, [("Easy", "Easy"), ("Medium", "Medium"), ("Hard", "Hard")], self.level_var, 10)
 
-        FlatButton(wrap, "+ ADD QUESTION", self.add, "blue", 11).pack(pady=8)
+        FlatButton(wrap, "+ ADD QUESTION", self.add, "pink", 11).pack(pady=8)
         self.msg = label(wrap, "", 10, True, MUTED)
         self.msg.pack()
 
         self.listbox = tk.Listbox(wrap, width=80, height=8, font=(FONT, 11),
-                                  selectmode="single", exportselection=False)
+                                  selectmode="single", exportselection=False,
+                                  bg=SURFACE, fg=INK, selectbackground=PURPLE, selectforeground=WHITE,
+                                  highlightthickness=1, highlightbackground=BORDER, relief="flat")
         self.listbox.pack()
         self.listbox.bind("<Delete>", lambda e: self.delete())
 
@@ -51,6 +57,7 @@ class TeacherSetupScreen(tk.Frame):
         FlatButton(row, "← BACK", app.show_welcome, "secondary").pack(side="left", padx=6)
         FlatButton(row, "🗑 DELETE SELECTED", self.delete, "danger").pack(side="left", padx=6)
         FlatButton(row, "START STUDENT QUIZ", self.start).pack(side="left", padx=6)
+        self.refresh()          # show the questions saved earlier
 
     def refresh(self):
         self.listbox.delete(0, "end")
@@ -93,6 +100,7 @@ class TeacherSetupScreen(tk.Frame):
             return
         self.app.show_live_quiz(self.questions, self.name.get().strip() or "Student")
 
+
 class LiveQuizScreen(tk.Frame):
     """We show teacher-created questions and collect written answers."""
     def __init__(self, app, questions, student):
@@ -106,7 +114,8 @@ class LiveQuizScreen(tk.Frame):
         self.head.pack()
         self.qlbl = label(wrap, "", 16, True, wraplength=640, justify="left")
         self.qlbl.pack(pady=10)
-        self.box = tk.Text(wrap, width=70, height=7, font=(FONT, 12), relief="solid", bd=1)
+        self.box = tk.Text(wrap, width=70, height=7, font=(FONT, 12), relief="flat", bd=0, bg=SURFACE_2, fg=INK, insertbackground=LIME,
+                   highlightthickness=2, highlightbackground=BORDER, highlightcolor=LIME)
         self.box.pack()
         self.btn = FlatButton(wrap, "NEXT →", self.next)
         self.btn.pack(pady=12)
@@ -151,8 +160,8 @@ class LiveResultScreen(tk.Frame):
             c.pack(fill="x", pady=4)
             label(c, f"Q{i + 1}. [{q['level']}] {q['q']}", 11, True, wraplength=620, justify="left").pack(anchor="w")
             label(c, f"Student: {answers[i] or '(no answer)'}", 10, wraplength=620, justify="left").pack(anchor="w")
-            label(c, f"Model answer: {q['a']}", 10, fg="#047857", wraplength=620, justify="left").pack(anchor="w")
-            r = tk.Frame(c, bg=WHITE)
+            label(c, f"Model answer: {q['a']}", 10, fg=DARK_GREEN, wraplength=620, justify="left").pack(anchor="w")
+            r = tk.Frame(c, bg=SURFACE)
             r.pack(anchor="w", pady=4)
             yes = FlatButton(r, "✓ Correct", lambda i=i: self.mark(i, True), "secondary", 10)
             no = FlatButton(r, "✗ Incorrect", lambda i=i: self.mark(i, False), "secondary", 10)
@@ -166,8 +175,8 @@ class LiveResultScreen(tk.Frame):
         # We save the teacher's mark and update the score.
         self.marks[i] = value
         yes, no = self.btns[i]
-        yes.config(bg=GREEN if value else WHITE, fg=WHITE if value else NAVY)
-        no.config(bg=RED if not value else WHITE, fg=WHITE if not value else NAVY)
+        yes.config(bg=GREEN if value else SURFACE, fg=INK_ON_LIME if value else INK)
+        no.config(bg=RED if not value else SURFACE, fg=WHITE if not value else INK)
         self.update_score()
 
     def update_score(self):

@@ -2,17 +2,19 @@ import tkinter as tk
 
 from core.quiz_data import fmt_time, load_results, ranking
 from core.quiz_questions import TOPICS
-from core.quiz_theme import BG, BLUE, GREY, MUTED, NAVY, ORANGE, WHITE
-from desktop.widgets import FlatButton, card, chip_group, label, top_bar
+from core.quiz_theme import BG, GREY, INK, MUTED, ORANGE, ORANGE_LIGHT, PINK, WHITE
+from core.quiz_theme import (BORDER, SURFACE, SURFACE_2, INK_ON_LIME, LIME, LIME_DARK, TEAL,
+                             TEAL_SOFT, TEAL_EDGE, RED_SOFT, RED_EDGE, PURPLE, PURPLE_SOFT)
+from desktop.widgets import FlatButton, bind_all, card, chip_group, label, top_bar
 
 
 class LeaderboardScreen(tk.Frame):
     """1st place at the top, 2nd below it, 3rd below that, and so on.
     Interactive: filter by topic, change the ranking (score / streak / speed),
     click any student to open their details, show top 10 or everyone."""
-    PODIUM = {1: ("🥇", "#fef9c3", "#eab308"),      # medal, background, border/bar colour
-              2: ("🥈", "#f1f5f9", "#94a3b8"),
-              3: ("🥉", "#ffedd5", "#ea580c")}
+    PODIUM = {1: ("🥇", "#3a3210", "#eab308"),      # medal, background, border/bar colour
+              2: ("🥈", "#262a35", "#94a3b8"),
+              3: ("🥉", "#33200f", "#ea580c")}
 
     def __init__(self, app):
         super().__init__(app, bg=BG)
@@ -131,7 +133,7 @@ class LeaderboardScreen(tk.Frame):
         return e["finalScore"], lambda v: f"⭐ {v}"
 
     def _add_row(self, i, e, sort, top):
-        medal, bg, edge = self.PODIUM.get(i, ("", WHITE, GREY))
+        medal, bg, edge = self.PODIUM.get(i, ("", SURFACE, BORDER))
         first, podium = i == 1, i <= 3
         mine = bool(load_results()) and e["name"].strip().lower() == load_results()[-1]["name"].strip().lower()
         row = tk.Frame(self.inner, bg=bg, highlightthickness=3 if podium else 2, highlightbackground=edge,
@@ -139,26 +141,26 @@ class LeaderboardScreen(tk.Frame):
         row.pack(fill="x", pady=4, padx=6)
         head = tk.Frame(row, bg=bg)
         head.pack(fill="x")
-        label(head, medal or f"#{i}", 26 if first else 18 if podium else 13, True, "#1a2e4a", bg, width=4).pack(side="left")
-        label(head, e["name"], 18 if first else 14 if podium else 12, True, "#1a2e4a", bg).pack(side="left", padx=6)
+        label(head, medal or f"#{i}", 26 if first else 18 if podium else 13, True, INK, bg, width=4).pack(side="left")
+        label(head, e["name"], 18 if first else 14 if podium else 12, True, INK, bg).pack(side="left", padx=6)
         if mine:
-            label(head, " YOU ", 9, True, WHITE, BLUE).pack(side="left", padx=6)
+            label(head, " YOU ", 9, True, WHITE, PINK).pack(side="left", padx=6)
         value, fmt = self._metric(e, sort)
-        main = label(head, fmt(0), 20 if first else 14 if podium else 12, True, "#1a2e4a", bg)
+        main = label(head, fmt(0), 20 if first else 14 if podium else 12, True, INK, bg)
         main.pack(side="right")
         side = f"🔥 {e['bestStreak']}" if sort == "score" else f"⭐ {e['finalScore']}"
         label(head, side, 11, True, ORANGE, bg).pack(side="right", padx=16)
 
         trough = tk.Frame(row, bg=GREY, height=6)
         trough.pack(fill="x", pady=(8, 0))
-        fill = tk.Frame(trough, bg=edge if podium else BLUE)
+        fill = tk.Frame(trough, bg=edge if podium else PINK)
         fill.place(relx=0, rely=0, relheight=1, relwidth=0)
 
         detail = tk.Frame(row, bg=bg)
         info = (f"{e['topic']}   ·   ✓ {e.get('correct', '?')}/{e.get('total', 10)} correct   ·   "
                 f"⚡ +{e.get('streakBonus', 0)} bonus   ·   📉 −{e.get('penalty', 0)}   ·   "
                 f"⏱ {fmt_time(e.get('timeSecs', 0))}   ·   📅 {e.get('date', '')}")
-        label(detail, info, 10, fg="#1a2e4a" if bg in {"#fef9c3", "#f1f5f9", "#ffedd5"} else MUTED,
+        label(detail, info, 10, fg=INK if podium else MUTED,
               bg=bg, wraplength=700, justify="left").pack(anchor="w")
 
         def toggle(_e=None):
@@ -198,5 +200,3 @@ class LeaderboardScreen(tk.Frame):
             pass
         super().destroy()
 
-
-# ───────────────────────── Teacher mode ─────────────────────────

@@ -10,26 +10,63 @@ except ImportError:
 from core.quiz_theme import SOUNDS
 
 
-def _play_feedback_sound(kind, root):
-    if winsound:
-        try:
-            for freq, ms in SOUNDS[kind]:
-                winsound.Beep(freq, ms)
-            return
-        except (RuntimeError, OSError):
-            winsound.MessageBeep(winsound.MB_OK if kind != "bad" else winsound.MB_ICONEXCLAMATION)
-            return
-    if root is not None:
-        root.bell()
+_SOUND_FILES = {}      # kind -> path of the WAV file (made once, then reused)
 
 
-# Play tones off the Tk event loop so feedback never pauses quiz controls.
+def _make_wav(kind):
+    """Build a small WAV file for one sound: sine tones with a soft start and end (no clicks)."""
+    import math
+    import struct
+    import tempfile
+    import wave
+    rate, volume = 22050, 0.45
+    frames = bytearray()
+    for freq, ms in SOUNDS[kind]:
+        n = int(rate * ms / 1000)
+        fade = max(1, int(rate * 0.006))
+        for i in range(n):
+            env = min(1.0, i / fade, (n - i) / fade)
+            frames += struct.pack("<h", int(32767 * volume * env * math.sin(2 * math.pi * freq * i / rate)))
+    path = os.path.join(tempfile.gettempdir(), f"ict_quiz_{kind}.wav")
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return path
+
+
+def _play_feedback_sound(kind):
+    """Old method (system speaker). We only use it if the WAV method fails."""
+    try:
+        for freq, ms in SOUNDS[kind]:
+            winsound.Beep(freq, ms)
+    except (RuntimeError, OSError):
+        winsound.MessageBeep(winsound.MB_OK if kind != "bad" else winsound.MB_ICONEXCLAMATION)
+
+
+# On Windows we play a WAV file with the sound card (SND_ASYNC = it plays in the background,
+# so the quiz never freezes and two sounds never fight each other). If that fails, we use Beep.
+# On other systems we use Tk's own bell.
 def beep(kind, root=None):
     if kind not in SOUNDS:
         raise ValueError(f"Unknown sound effect: {kind}")
     if root is not None and not getattr(root, "sound_enabled", True):
         return
-    threading.Thread(target=_play_feedback_sound, args=(kind, root), daemon=True).start()
+    if winsound:
+        try:
+            if kind not in _SOUND_FILES:
+                _SOUND_FILES[kind] = _make_wav(kind)
+            winsound.PlaySound(_SOUND_FILES[kind], winsound.SND_FILENAME | winsound.SND_ASYNC)
+            return
+        except Exception:
+            threading.Thread(target=_play_feedback_sound, args=(kind,), daemon=True).start()
+    elif root is not None and kind not in ("click", "tick"):
+        try:
+            root.bell()
+        except Exception:
+            pass
+
 
 # ───────────────────────── Scoring rules ─────────────────────────
 # We set the points, pass mark, streak bonuses, and score penalty here.

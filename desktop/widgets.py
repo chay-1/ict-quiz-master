@@ -1,38 +1,80 @@
 import tkinter as tk
 
-from core.quiz_theme import BLUE, FONT, GREEN, GREY, LIGHT, MUTED, NAVY, RED, WHITE
+from core.quiz_theme import (
+    BORDER, FONT, INK, INK_ON_LIME, LIME, LIME_HOVER, LIME_PRESS, MUTED, PURPLE,
+    PURPLE_HOVER, PURPLE_PRESS, RED, SURFACE, SURFACE_2, TEAL, TEAL_HOVER, WHITE,
+)
 
 
 class FlatButton(tk.Label):
-    """We use this label as a styled clickable button."""
-    STYLES = {  # normal bg, text colour, hover bg
-        "primary": (BLUE, WHITE, "#1d4ed8"),
-        "secondary": (WHITE, NAVY, LIGHT),
-        "success": (GREEN, WHITE, "#059669"),
-        "danger": (RED, WHITE, "#dc2626"),
-        "blue": (BLUE, WHITE, "#1d4ed8"),
+    """A styled button that behaves like a website button.
+
+    It has 5 states: normal, hover, pressed, keyboard focus and disabled.
+    It works with the mouse AND the keyboard (Tab to reach it, Enter or Space to press).
+    """
+    STYLES = {  # text colour, normal bg, hover bg, pressed bg, border colour
+        "primary":   (INK_ON_LIME, LIME, LIME_HOVER, LIME_PRESS, LIME),
+        "secondary": (INK, SURFACE, SURFACE_2, BORDER, BORDER),      # outline / ghost button
+        "success":   (INK_ON_LIME, TEAL, TEAL_HOVER, "#12997d", TEAL),
+        "danger":    (WHITE, RED, "#ff7f8b", "#d94453", RED),
+        "pink":      (WHITE, PURPLE, PURPLE_HOVER, PURPLE_PRESS, PURPLE),  # purple accent
     }
 
     def __init__(self, parent, text, command, style="primary", size=12):
         super().__init__(parent, text=text, font=(FONT, size, "bold"), padx=24, pady=12,
-                         highlightthickness=1)
+                         highlightthickness=2, takefocus=True)
         self.command, self.style, self.enabled = command, style, True
-        self.bind("<Button-1>", lambda e: self.enabled and self.command())
-        self.bind("<Enter>", lambda e: self._paint(True))
-        self.bind("<Leave>", lambda e: self._paint(False))
-        self._paint(False)
+        self.hover = self.pressed = self.focused = False
+        self.bind("<Enter>", lambda e: self._set(hover=True))
+        self.bind("<Leave>", lambda e: self._set(hover=False, pressed=False))
+        self.bind("<ButtonPress-1>", self._down)
+        self.bind("<ButtonRelease-1>", self._up)
+        self.bind("<FocusIn>", lambda e: self._set(focused=True))
+        self.bind("<FocusOut>", lambda e: self._set(focused=False))
+        for key in ("<Return>", "<space>"):
+            self.bind(key, self._key)
+        self._paint()
 
-    def _paint(self, hover):
-        bg, fg, hov = self.STYLES[self.style]
+    # ----- behaviour -----
+    def _set(self, **state):
+        for k, v in state.items():
+            setattr(self, k, v)
+        self._paint()
+
+    def _down(self, e):
+        if self.enabled:
+            self._set(pressed=True)
+
+    def _up(self, e):
+        was_pressed = self.pressed
+        self._set(pressed=False)
+        inside = 0 <= e.x < self.winfo_width() and 0 <= e.y < self.winfo_height()
+        if self.enabled and was_pressed and inside:
+            self.command()
+
+    def _key(self, e):
+        if self.enabled:
+            self.command()
+        return "break"
+
+    # ----- look -----
+    def _paint(self, hover=None):
+        if hover is not None:          # old code calls _paint(True/False)
+            self.hover = hover
+        fg, bg, hov, press, edge = self.STYLES[self.style]
         if not self.enabled:
-            self.config(bg=GREY, fg=MUTED, cursor="arrow", highlightbackground=GREY)
-        else:
-            self.config(bg=hov if hover else bg, fg=fg, cursor="hand2",
-                        highlightbackground=GREY if self.style == "secondary" else bg)
+            self.config(bg=SURFACE_2, fg=MUTED, cursor="arrow", highlightbackground=SURFACE_2,
+                        highlightcolor=SURFACE_2)
+            return
+        shade = press if self.pressed else hov if self.hover else bg
+        border = INK if self.focused else (LIME if self.hover and self.style == "secondary" else edge)
+        self.config(bg=shade, fg=fg, cursor="hand2", highlightbackground=border,
+                    highlightcolor=INK)
 
     def set_enabled(self, value):
         self.enabled = value
-        self._paint(False)
+        self.config(takefocus=bool(value))
+        self._paint()
 
 
 class SoundToggle(FlatButton):
@@ -59,23 +101,21 @@ def bind_all(widget, sequence, func):
 # We make labels with the same font and colours.
 def label(parent, text, size=12, bold=False, fg=None, bg=None, **kw):
     bg = bg if bg is not None else parent.cget("bg")
-    fg = fg if fg is not None else NAVY
-    if fg == MUTED and bg == WHITE:
-        fg = "#64748b"
+    fg = fg if fg is not None else INK
     return tk.Label(parent, text=text, font=(FONT, size, "bold" if bold else "normal"),
                     fg=fg, bg=bg, **kw)
 
 
 # We use a white card to group related information.
 def card(parent, **kw):
-    return tk.Frame(parent, bg=WHITE, highlightthickness=1, highlightbackground=GREY, **kw)
+    return tk.Frame(parent, bg=SURFACE, highlightthickness=1, highlightbackground=BORDER, **kw)
 
 
 # We build the shared header shown at the top of each screen.
 def top_bar(parent, title="ICT Quiz Master"):
-    bar = tk.Frame(parent, bg=WHITE, highlightthickness=1, highlightbackground=GREY)
+    bar = tk.Frame(parent, bg=SURFACE, highlightthickness=1, highlightbackground=BORDER)
     bar.pack(fill="x")
-    tk.Label(bar, text=" Q ", bg=BLUE, fg=WHITE, font=(FONT, 11, "bold")).pack(side="left", padx=(24, 8), pady=14)
+    tk.Label(bar, text=" Q ", bg=LIME, fg=INK_ON_LIME, font=(FONT, 11, "bold")).pack(side="left", padx=(24, 8), pady=14)
     label(bar, title, 15, True).pack(side="left")
     SoundToggle(bar, parent.winfo_toplevel()).pack(side="right", padx=16, pady=5)
     return bar
@@ -88,8 +128,8 @@ def chip_group(parent, options, var, size=10, command=None):
 
     def paint():
         for value, b in btns.items():
-            b.style = "blue" if var.get() == value else "secondary"
-            b._paint(False)
+            b.style = "primary" if var.get() == value else "secondary"
+            b._paint()
 
     def pick(value):
         var.set(value)

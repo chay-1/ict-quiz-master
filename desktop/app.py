@@ -1,14 +1,15 @@
+"""Main window: creates the Tkinter window and moves between screens."""
 import time
+import tkinter as tk
 from datetime import date
 
-import tkinter as tk
-
 from core.quiz_data import final_score, penalty_for, save_result
+from core.quiz_theme import BG
+from desktop.screens_certificate import CertificateScreen
 from desktop.screens_home import SetupScreen, TopicScreen, WelcomeScreen
 from desktop.screens_leaderboard import LeaderboardScreen
 from desktop.screens_quiz import PerformanceScreen, QuizScreen, ResultScreen, ReviewScreen
 from desktop.screens_teacher import LiveQuizScreen, LiveResultScreen, TeacherSetupScreen
-from core.quiz_theme import BG
 
 
 class App(tk.Tk):
@@ -17,12 +18,14 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("ICT Quiz Master")
-        self.geometry("1100x780")
-        self.minsize(960, 700)
+        w = min(1100, self.winfo_screenwidth() - 40)          # fit small laptop screens
+        h = min(780, self.winfo_screenheight() - 90)          # leave room for the taskbar
+        self.geometry(f"{w}x{h}+{max(0, (self.winfo_screenwidth() - w) // 2)}+10")
+        self.minsize(900, 580)
         self.configure(bg=BG)
-        self.student = "Student"
-        self.sound_enabled = True
-        self.current = None
+        self.student = "Student"        # name typed on the setup screen
+        self.sound_enabled = True       # changed by the sound button
+        self.current = None             # the screen that is showing now
         self.show_welcome()
 
     def swap(self, cls, *args):
@@ -43,6 +46,9 @@ class App(tk.Tk):
 
     def show_review(self, topic, r, entry):
         self.swap(ReviewScreen, topic, r, entry)
+
+    def show_certificate(self, topic, r, entry):
+        self.swap(CertificateScreen, topic, r, entry)
 
     def show_performance(self, topic, r, entry):
         self.swap(PerformanceScreen, topic, r, entry)

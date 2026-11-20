@@ -1,5 +1,2 @@
-streamlit>=1.37
-gradio>=4.36
-pandas>=2.0
-reportlab>=4.0
-pillow>=10.0
+# ICT Quiz Master uses only the Python standard library (Tkinter, json, random, threading).
+# No packages need to be installed with pip.
